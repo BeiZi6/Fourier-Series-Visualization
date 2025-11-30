@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualization of Fourier series - Glow & Large Edition</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #050510; font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; overflow: hidden; color: #fff; }
+        #mainCanvas { display: block; cursor: crosshair; }
+
+        /* === 底部控制台样式 === */
+        #hud {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 1000px;
+            background: rgba(16, 20, 35, 0.85);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            border-radius: 12px;
+            backdrop-filter: blur(15px);
+            /* 面板本身的辉光 */
+            box-shadow: 0 0 20px rgba(0, 150, 255, 0.2), 0 -8px 32px rgba(0, 0, 0, 0.6);
+            user-select: none;
+            transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #hud.collapsed {
+            transform: translateX(-50%) translateY(calc(100% - 40px));
+        }
+
+        #hud-header {
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(100, 200, 255, 0.1);
+            background: rgba(100, 200, 255, 0.05);
+            border-radius: 12px 12px 0 0;
+            position: relative;
+        }
+        #hud-header:hover { background: rgba(100, 200, 255, 0.1); }
+        #hud-header h2 {
+            font-size: 14px; color: #0ff; font-weight: normal; letter-spacing: 2px; text-transform: uppercase;
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.5); /* 文字辉光 */
+        }
+        #toggleIcon { margin-left: 10px; font-size: 12px; transition: transform 0.3s; }
+        #hud.collapsed #toggleIcon { transform: rotate(180deg); }
+
+        #hud-content {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        .panel-section { display: flex; flex-direction: column; gap: 10px; }
+        .section-title {
+            font-size: 11px; color: #89b; text-transform: uppercase;
+            border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-bottom: 5px;
+            text-shadow: 0 0 2px rgba(100, 150, 255, 0.3);
+        }
+
+        .control-group { margin-bottom: 5px; }
+        .control-group label { display: flex; justify-content: space-between; color: #acf; margin-bottom: 4px; font-size: 12px; }
+        
+        input[type="range"] {
+            width: 100%; height: 4px; -webkit-appearance: none;
+            background: rgba(255,255,255,0.1); border-radius: 2px; outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 14px; height: 14px;
+            background: #0ff; border-radius: 50%; cursor: pointer; border: 2px solid #fff;
+            box-shadow: 0 0 10px #0ff; /* 滑块辉光 */
+        }
+
+        .text-input-group { display: flex; gap: 8px; }
+        #textInput {
+            flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(100, 200, 255, 0.3);
+            background: rgba(0,0,0,0.3); color: #fff; font-family: inherit; outline: none; font-size: 14px;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+        }
+        #genTextBtn {
+            padding: 0 12px; border-radius: 4px; border: none;
+            background: rgba(0, 136, 255, 0.8); color: white; cursor: pointer; font-size: 12px;
+            box-shadow: 0 0 10px rgba(0, 136, 255, 0.4);
+            transition: all 0.2s;
+        }
+        #genTextBtn:hover {
+            background: #00aaff; box-shadow: 0 0 15px rgba(0, 170, 255, 0.6);
+        }
+
+        #presetBtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        
+        /* === 通用按钮样式（带辉光） === */
+        .preset-btn {
+            padding: 8px 5px; font-size: 11px; background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(100, 200, 255, 0.2); 
+            color: #bdf; border-radius: 4px; cursor: pointer; text-align: center;
+            transition: all 0.3s ease;
+            /* 默认微弱辉光 */
+            box-shadow: 0 0 5px rgba(0, 200, 255, 0.1);
+        }
+        .preset-btn:hover { 
+            background: rgba(0,255,255,0.15); 
+            color: #fff; 
+            border-color: #0ff; 
+            /* 悬停强辉光 */
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5), inset 0 0 5px rgba(0, 255, 255, 0.2);
+            text-shadow: 0 0 5px #0ff;
+        }
+        
+        /* === 特殊按钮样式：党旗（红色辉光） === */
+        #btn-party {
+            color: #ffcccc;
+            border: 1px solid rgba(255, 50, 50, 0.4);
+            background: rgba(255, 0, 0, 0.1);
+            font-weight: bold;
+            box-shadow: 0 0 8px rgba(255, 0, 0, 0.2);
+        }
+        #btn-party:hover {
+            background: rgba(255, 0, 0, 0.25);
+            color: #fff;
+            border-color: #ff0000;
+            /* 红色强辉光 */
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.8), inset 0 0 8px rgba(255, 0, 0, 0.3);
+            text-shadow: 0 0 8px #f00;
+        }
+
+        .color-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        input[type="color"] { width: 40px; height: 25px; border: none; background: transparent; cursor: pointer; }
+
+        .checkbox-group { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: #8cf; }
+        
+        #stats { font-size: 10px; color: #567; display: flex; gap: 15px; margin-top: 5px;}
+        #stats span { color: #0ff; text-shadow: 0 0 3px #0ff; }
+
+        @media (max-width: 768px) {
+            #hud-content { grid-template-columns: 1fr; gap: 15px; max-height: 50vh; overflow-y: auto; }
+            #hud { width: 95%; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mainCanvas"></canvas>
+
+    <div id="hud">
+        <div id="hud-header">
+            <h2>设置面板</h2>
+            <span id="toggleIcon">▼</span> </div>
+
+        <div id="hud-content">
+            <div class="panel-section">
+                <div class="section-title">内容输入</div>
+                <div class="text-input-group">
+                    <input type="text" id="textInput" value="Hello" placeholder="输入字符">
+                    <button id="genTextBtn">生成</button>
+                </div>
+                <div class="control-group color-row">
+                    <label style="margin:0">轮廓颜色</label>
+                    <input type="color" id="pathColor" value="#00ffff">
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showCircles" checked>
+                    <label for="showCircles">显示傅里叶圆环系统</label>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-title">渲染参数</div>
+                <div class="control-group">
+                    <label>级数 N (精度) <span id="numTermsValue">150</span></label>
+                    <input type="range" id="numTerms" min="1" max="1024" value="150">
+                </div>
+                <div class="control-group">
+                    <label>绘制速度 <span id="speedValue">8</span></label>
+                    <input type="range" id="speed" min="1" max="30" step="1" value="8">
+                </div>
+                <div class="control-group">
+                    <label>轨迹保留长度 <span id="trailLengthValue">Inf</span></label>
+                    <input type="range" id="trailLength" min="500" max="60000" step="500" value="60000">
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-title">快速预设</div>
+                <div id="presetBtns">
+                    <button class="preset-btn" data-text="Fourier">Fourier</button>
+                    <button class="preset-btn" data-text="3.1415">Pi</button>
+                    <button class="preset-btn" data-text="你好">中文</button>
+                    
+                    <button class="preset-btn" id="btn-party">☭ 党旗</button>
+                    
+                    <button class="preset-btn" data-text="∞">无限</button>
+                    <button class="preset-btn" data-shape="treble">🎼 音符</button>
+                </div>
+                <div id="stats">
+                    <div>点数: <span id="pointCount">0</span></div>
+                    <div>FPS: <span id="fps">0</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // ==================== 状态变量 ====================
+        let width, height;
+        let fourierCoeffs = [];
+        let drawnPath = [];
+        let time = 0;
+        
+        const TOTAL_CYCLE_STEPS = 4000; 
+        let dt = (2 * Math.PI) / TOTAL_CYCLE_STEPS; 
+
+        // 用户设置
+        let numTerms = 150;
+        let speedMultiplier = 8; 
+        let trailLength = 60000; 
+        let showCircles = true;
+        let mainColor = '#00ffff'; 
+
+        // 布局
+        let circlesCenterX, circlesCenterY;
+        let pivotX, pivotY;
+        let drawingCenterX, drawingCenterY;
+        let globalScale = 1;
+
+        // FPS
+        let lastTime = 0;
+        let frameCount = 0;
+
+        // ==================== 初始化 ====================
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            setupUI();
+            processText(document.getElementById('textInput').value);
+            requestAnimationFrame(animate);
+        }
+
+        function resizeCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            // === 修改：放大布局和间距 ===
+            circlesCenterX = width * 0.22; // 圆心左移一点，给圆留空间
+            circlesCenterY = height * 0.45; 
+            pivotX = width * 0.45;
+            pivotY = height * 0.45;
+            drawingCenterX = width * 0.75; // 绘图中心右移
+            drawingCenterY = height * 0.45;
+            
+            // === 修改：大幅增加缩放比例 (0.16 -> 0.25) ===
+            // 使得圆和图案都变大
+            globalScale = Math.min(width, height) * 0.25;
+        }
+
+        function setupUI() {
+            const updateVal = (id, val) => document.getElementById(id + 'Value').textContent = val;
+
+            const hud = document.getElementById('hud');
+            const header = document.getElementById('hud-header');
+            
+            header.addEventListener('click', () => {
+                hud.classList.toggle('collapsed');
+            });
+
+            // 颜色
+            document.getElementById('pathColor').addEventListener('input', (e) => {
+                mainColor = e.target.value;
+            });
+
+            document.getElementById('numTerms').addEventListener('input', (e) => {
+                numTerms = parseInt(e.target.value);
+                updateVal('numTerms', numTerms);
+            });
+
+            document.getElementById('speed').addEventListener('input', (e) => {
+                speedMultiplier = parseInt(e.target.value);
+                updateVal('speed', speedMultiplier);
+            });
+
+            document.getElementById('trailLength').addEventListener('input', (e) => {
+                trailLength = parseInt(e.target.value);
+                updateVal('trailLength', trailLength >= 59000 ? "Inf" : trailLength);
+            });
+
+            document.getElementById('showCircles').addEventListener('change', e => showCircles = e.target.checked);
+
+            document.getElementById('genTextBtn').addEventListener('click', () => {
+                const text = document.getElementById('textInput').value;
+                if(text.trim()) processText(text);
+            });
+            document.getElementById('textInput').addEventListener('keypress', (e) => {
+                if(e.key === 'Enter') document.getElementById('genTextBtn').click();
+            });
+
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                if(btn.id === 'btn-party') return;
+                btn.addEventListener('click', () => {
+                    if(btn.dataset.text) {
+                        document.getElementById('textInput').value = btn.dataset.text;
+                        processText(btn.dataset.text);
+                    } else if (btn.dataset.shape) {
+                        generatePresetShape(btn.dataset.shape);
+                    }
+                });
+            });
+
+            // === 党旗按钮逻辑 ===
+            document.getElementById('btn-party').addEventListener('click', () => {
+                mainColor = '#ff0000';
+                document.getElementById('pathColor').value = mainColor;
+                const flagChar = '☭';
+                document.getElementById('textInput').value = flagChar;
+                processText(flagChar);
+            });
+        }
+
+        // ==================== 动画循环 ====================
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+
+            frameCount++;
+            if (timestamp - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = timestamp;
+            }
+
+            // 背景：稍微加深一点黑色，对比辉光
+            ctx.fillStyle = '#050510';
+            ctx.fillRect(0, 0, width, height);
+
+            drawBackground();
+
+            if (fourierCoeffs.length === 0) return;
+
+            const N = Math.min(numTerms, fourierCoeffs.length);
+
+            // ---------------- 计算 ----------------
+            let finalPoint = {x: 0, y: 0}; 
+
+            for (let s = 0; s < speedMultiplier; s++) {
+                time += dt;
+                if (time > 2 * Math.PI) time -= 2 * Math.PI;
+
+                let p = calculatePoint(time, N);
+                
+                const drawX = drawingCenterX + (p.x - circlesCenterX) * 0.9;
+                const drawY = drawingCenterY + (p.y - circlesCenterY) * 0.9;
+
+                drawnPath.unshift({x: drawX, y: drawY});
+                if (drawnPath.length > trailLength) {
+                    drawnPath.pop();
+                }
+
+                if (s === speedMultiplier - 1) finalPoint = p;
+            }
+
+            // ---------------- 绘制路径 (增加辉光) ----------------
+            if (drawnPath.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(drawnPath[0].x, drawnPath[0].y);
+                let skip = drawnPath.length > 10000 ? 2 : 1;
+                for (let i = 1; i < drawnPath.length; i+=skip) {
+                    ctx.lineTo(drawnPath[i].x, drawnPath[i].y);
+                }
+                
+                ctx.strokeStyle = mainColor; 
+                ctx.lineWidth = 3; // 进一步加粗
+                ctx.lineJoin = 'round';
+                
+                // === 修改：增强辉光 ===
+                ctx.shadowBlur = 20; // 更强的发光
+                ctx.shadowColor = mainColor; 
+                
+                ctx.stroke();
+                
+                // 为了让核心更亮，可以重绘一次细的亮白色核心
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            if (showCircles) {
+                drawEpicyclesVisual(circlesCenterX, circlesCenterY, N, time);
+            }
+
+            const penX = drawingCenterX + (finalPoint.x - circlesCenterX) * 0.9;
+            const penY = drawingCenterY + (finalPoint.y - circlesCenterY) * 0.9;
+            
+            if (showCircles) {
+                ctx.beginPath();
+                ctx.moveTo(finalPoint.x, finalPoint.y);
+                ctx.lineTo(pivotX, pivotY);             
+                ctx.lineTo(penX, penY);                 
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // 笔尖发光
+            ctx.beginPath();
+            ctx.arc(penX, penY, 5, 0, Math.PI * 2); // 笔尖变大
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 15; 
+            ctx.shadowColor = '#fff';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function calculatePoint(t, n) {
+            let x = circlesCenterX;
+            let y = circlesCenterY;
+            for (let i = 0; i < n; i++) {
+                const c = fourierCoeffs[i];
+                const angle = c.freq * t + c.phase;
+                const radius = c.amp * globalScale;
+                x += radius * Math.cos(angle);
+                y += radius * Math.sin(angle);
+            }
+            return {x, y};
+        }
+
+        // === 视觉增强的圆环绘制 (增加辉光) ===
+        function drawEpicyclesVisual(cx, cy, n, t) {
+            let x = cx;
+            let y = cy;
+            for (let i = 0; i < n; i++) {
+                const prevX = x;
+                const prevY = y;
+                const c = fourierCoeffs[i];
+                const angle = c.freq * t + c.phase;
+                const radius = c.amp * globalScale;
+                x += radius * Math.cos(angle);
+                y += radius * Math.sin(angle);
+
+                if (radius > 1.5 || i < 20) {
+                    ctx.beginPath();
+                    ctx.arc(prevX, prevY, radius, 0, Math.PI * 2);
+                    
+                    const opacity = Math.max(0.15, 0.8 - i * 0.03); 
+                    ctx.strokeStyle = `rgba(100, 200, 255, ${opacity})`; 
+                    ctx.lineWidth = i < 5 ? 2.5 : 1.5; 
+                    
+                    // === 修改：给圆环也加一点辉光 ===
+                    if (i < 5) {
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = 'rgba(0, 150, 255, 0.5)';
+                    } else {
+                        ctx.shadowBlur = 0;
+                    }
+
+                    ctx.stroke();
+                    ctx.shadowBlur = 0; // 重置
+                    
+                    if (i < 30) { 
+                        ctx.beginPath();
+                        ctx.moveTo(prevX, prevY);
+                        ctx.lineTo(x, y);
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0.1, 0.6 - i * 0.02)})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function drawBackground() {
+            // 背景分割线
+            ctx.fillStyle = 'rgba(30, 40, 60, 0.2)';
+            ctx.fillRect(0, 0, pivotX, height); 
+            
+            // 中轴点
+            ctx.beginPath();
+            ctx.arc(pivotX, pivotY, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#0af';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#0af';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // ==================== 文本与算法 ====================
+        function processText(text) {
+            if (!text) return;
+            const fontCanvas = document.createElement('canvas');
+            const fontCtx = fontCanvas.getContext('2d', {willReadFrequently: true});
+            const fontSize = 300; 
+            fontCtx.font = `bold ${fontSize}px Arial, sans-serif`;
+            const textMetrics = fontCtx.measureText(text);
+            const textWidth = Math.ceil(textMetrics.width);
+            const textHeight = Math.ceil(fontSize * 1.2);
+            
+            const padding = 40;
+            fontCanvas.width = textWidth + padding * 2;
+            fontCanvas.height = textHeight + padding * 2;
+
+            fontCtx.fillStyle = 'black';
+            fontCtx.fillRect(0, 0, fontCanvas.width, fontCanvas.height);
+            fontCtx.fillStyle = 'white';
+            fontCtx.font = `bold ${fontSize}px Arial, sans-serif`;
+            fontCtx.textAlign = 'center';
+            fontCtx.textBaseline = 'middle';
+            fontCtx.fillText(text, fontCanvas.width / 2, fontCanvas.height / 2);
+
+            processCanvasToFourier(fontCtx, fontCanvas.width, fontCanvas.height);
+        }
+
+        function processCanvasToFourier(ctx, w, h) {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const contours = marchingSquares(imageData.data, w, h);
+
+            if (contours.length === 0) return;
+
+            let allPoints = [];
+            contours.forEach(contour => {
+                const resampled = resample(contour, Math.max(50, Math.floor(contour.length / 2)));
+                allPoints = allPoints.concat(resampled);
+            });
+
+            const finalSampled = resample(allPoints, 4096); 
+            const normalized = normalize(finalSampled);
+            computeDFT(normalized);
+            resetAnimation();
+        }
+
+        function marchingSquares(data, w, h) {
+            const grid = [];
+            for (let y = 0; y < h; y++) {
+                let row = [];
+                for (let x = 0; x < w; x++) {
+                    row.push(data[(y * w + x) * 4] > 128 ? 1 : 0);
+                }
+                grid.push(row);
+            }
+            const segments = [];
+            const configToLines = [[],[[0,0.5,0.5,1]],[[0.5,1,1,0.5]],[[0,0.5,1,0.5]],[[0.5,0,1,0.5]],[[0,0.5,0.5,0],[0.5,1,1,0.5]],[[0.5,0,0.5,1]],[[0,0.5,0.5,0]],[[0,0.5,0.5,0]],[[0.5,0,0.5,1]],[[0,0.5,0.5,1],[0.5,0,1,0.5]],[[0.5,0,1,0.5]],[[0,0.5,1,0.5]],[[0.5,1,1,0.5]],[[0,0.5,0.5,1]],[]];
+
+            for (let y = 0; y < h - 1; y++) {
+                for (let x = 0; x < w - 1; x++) {
+                    const config = (grid[y][x] * 8) + (grid[y][x+1] * 4) + (grid[y+1][x+1] * 2) + (grid[y+1][x] * 1);
+                    const lines = configToLines[config];
+                    if (lines) lines.forEach(l => segments.push({p1: {x: x + l[0], y: y + l[1]}, p2: {x: x + l[2], y: y + l[3]}}));
+                }
+            }
+            return stitchSegments(segments);
+        }
+
+        function stitchSegments(segments) {
+            if (segments.length === 0) return [];
+            const contours = [];
+            const used = new Array(segments.length).fill(false);
+            const epsilon = 0.01; 
+            for (let i = 0; i < segments.length; i++) {
+                if (used[i]) continue;
+                let currentContour = [segments[i].p1, segments[i].p2];
+                used[i] = true;
+                let currentPoint = segments[i].p2;
+                let foundNext = true;
+                while (foundNext) {
+                    foundNext = false;
+                    for (let j = 0; j < segments.length; j++) {
+                        if (!used[j]) {
+                            if (Math.abs(segments[j].p1.x - currentPoint.x) < epsilon && Math.abs(segments[j].p1.y - currentPoint.y) < epsilon) {
+                                currentContour.push(segments[j].p2); currentPoint = segments[j].p2; used[j] = true; foundNext = true; break;
+                            } else if (Math.abs(segments[j].p2.x - currentPoint.x) < epsilon && Math.abs(segments[j].p2.y - currentPoint.y) < epsilon) {
+                                currentContour.push(segments[j].p1); currentPoint = segments[j].p1; used[j] = true; foundNext = true; break;
+                            }
+                        }
+                    }
+                    if (foundNext && Math.abs(currentPoint.x - currentContour[0].x) < epsilon && Math.abs(currentPoint.y - currentContour[0].y) < epsilon) foundNext = false; 
+                }
+                if (currentContour.length > 5) contours.push(currentContour);
+            }
+            return contours;
+        }
+
+        function resample(points, n) {
+            if (points.length < 2) return points;
+            const res = [points[0]];
+            let totalLen = 0;
+            for(let i=0; i<points.length-1; i++) totalLen += Math.hypot(points[i+1].x-points[i].x, points[i+1].y-points[i].y);
+            totalLen += Math.hypot(points[0].x-points[points.length-1].x, points[0].y-points[points.length-1].y);
+            const step = totalLen / n;
+            let currentDist = 0;
+            let currentIdx = 0;
+            for(let i=1; i<n; i++) {
+                const targetDist = i * step;
+                while(currentDist < targetDist) {
+                    const nextIdx = (currentIdx + 1) % points.length;
+                    const dist = Math.hypot(points[nextIdx].x-points[currentIdx].x, points[nextIdx].y-points[currentIdx].y);
+                    if(currentDist + dist >= targetDist) {
+                        const t = (targetDist - currentDist) / dist;
+                        res.push({x: points[currentIdx].x + (points[nextIdx].x - points[currentIdx].x) * t, y: points[currentIdx].y + (points[nextIdx].y - points[currentIdx].y) * t});
+                        break;
+                    }
+                    currentDist += dist; currentIdx = nextIdx; if (currentIdx === 0 && currentDist > 0) break;
+                }
+            }
+            return res;
+        }
+
+        function normalize(points) {
+            if (points.length === 0) return [];
+            let cx=0, cy=0; points.forEach(p => { cx+=p.x; cy+=p.y; }); cx /= points.length; cy /= points.length;
+            let maxR = 0; points.forEach(p => { const d = Math.hypot(p.x-cx, p.y-cy); if(d > maxR) maxR = d; });
+            return points.map(p => ({ x: (p.x - cx) / maxR, y: (p.y - cy) / maxR }));
+        }
+
+        function computeDFT(points) {
+            const N = points.length;
+            fourierCoeffs = [];
+            for (let k = 0; k < N; k++) {
+                let re = 0, im = 0;
+                for (let n = 0; n < N; n++) {
+                    const angle = (2 * Math.PI * k * n) / N;
+                    re += points[n].x * Math.cos(angle) + points[n].y * Math.sin(angle);
+                    im += points[n].y * Math.cos(angle) - points[n].x * Math.sin(angle);
+                }
+                re /= N; im /= N;
+                fourierCoeffs.push({ freq: k <= N/2 ? k : k - N, amp: Math.sqrt(re*re + im*im), phase: Math.atan2(im, re) });
+            }
+            fourierCoeffs.sort((a, b) => b.amp - a.amp);
+            document.getElementById('pointCount').textContent = N;
+        }
+
+        function resetAnimation() { drawnPath = []; time = 0; }
+
+        function generatePresetShape(type) {
+            let points = [];
+            const N = 1000;
+            if (type === 'treble') {
+                for (let i = 0; i < N; i++) {
+                    const t = (4 * Math.PI * i) / N - 2 * Math.PI;
+                    const r = 0.3 + 0.15 * t / Math.PI;
+                    const x = r * Math.cos(t * 1.5) + 0.2 * Math.sin(t * 0.5);
+                    const y = r * Math.sin(t * 1.5) + t / (4 * Math.PI);
+                    points.push({x: x * 0.8, y: y * 0.8 - 0.3});
+                }
+            }
+            const normalized = normalize(points);
+            computeDFT(normalized);
+            resetAnimation();
+        }
+
+        init();
+    </script>
+</body>
+</html>
